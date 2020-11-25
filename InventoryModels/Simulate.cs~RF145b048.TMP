@@ -1,0 +1,126 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using InventoryModels;
+
+namespace InventoryModels
+{
+    public class Simulate
+    {
+        private SimulationSystem system;
+
+        public Simulate(SimulationSystem s)
+        {
+            system = s;
+        }
+
+        decimal tot_end = 0, tot_shortage = 0;
+        public List<SimulationCase> get_table()
+        {
+            List<SimulationCase> ret = new List<SimulationCase>();
+
+            int cycle = 1, start_up = system.StartLeadDays + 1, inv_begin = system.StartInventoryQuantity, start_order = system.StartOrderQuantity, rand = 0;
+            int up = 0, order = 0, sh = 0, demand = 0;
+            Random R = new Random();
+
+            Dictionary<int, int> up_day = new Dictionary<int, int>();
+
+            for(int i = 0; i < system.NumberOfDays; i++)
+            {
+                SimulationCase cs = new SimulationCase();
+                cs.Day = i + 1;
+                cs.Cycle = cycle;
+
+                cs.DayWithinCycle = (i + 1) % system.ReviewPeriod;
+                if (cs.DayWithinCycle == 0)
+                {
+                    cs.DayWithinCycle = system.ReviewPeriod;
+                    cycle++;
+                }
+
+                cs.BeginningInventory = inv_begin;
+                if (i + 1 == start_up)
+                    cs.BeginningInventory += start_order;
+                try
+                {
+                    cs.BeginningInventory += up_day[i + 1];
+                }
+                catch (Exception q)
+                {
+                    cs.BeginningInventory += 0;
+                }
+
+                rand = R.Next(1, 101);
+                cs.RandomDemand = rand;
+                for (int j = 0; j < system.DemandDistribution.Count; j++)
+                {
+                    if (system.DemandDistribution[j].MinRange <= rand && system.DemandDistribution[j].MaxRange >= rand)
+                    {
+                        cs.Demand = system.DemandDistribution[j].Value;
+                        demand = system.DemandDistribution[j].Value;
+                        break;
+                    }
+                }
+
+                demand += sh;
+                cs.EndingInventory = Math.Max(0, cs.BeginningInventory - demand);
+
+                if (cs.BeginningInventory >= demand)
+                    cs.ShortageQuantity = 0;
+                else
+                    cs.ShortageQuantity = demand - cs.BeginningInventory;
+
+                if (cs.DayWithinCycle == system.ReviewPeriod)
+                {
+                    cs.OrderQuantity = system.OrderUpTo - cs.EndingInventory + cs.ShortageQuantity;
+                    cs.RandomLeadDays = R.Next(1, 101);
+                    for (int j = 0; j < system.LeadDaysDistribution.Count; j++)
+                    {
+                        if (system.LeadDaysDistribution[j].MinRange <= cs.RandomLeadDays && system.LeadDaysDistribution[j].MaxRange >= cs.RandomLeadDays)
+                        {
+                            cs.LeadDays = system.LeadDaysDistribution[j].Value;
+                            break;
+                        }
+                    }
+
+                    try
+                    {
+                        up_day[(i + 1) + cs.LeadDays + 1] += cs.OrderQuantity;
+                    }
+                    catch(Exception qq)
+                    {
+                        up_day[(i + 1) + cs.LeadDays + 1] = cs.OrderQuantity;
+                    }
+
+                }
+                else
+                {
+                    cs.OrderQuantity = 0;
+                    cs.RandomLeadDays = 0;
+                    cs.LeadDays = 0;
+                }
+
+                sh = cs.ShortageQuantity;
+                inv_begin = cs.EndingInventory;
+                tot_end += cs.EndingInventory;
+                tot_shortage += cs.ShortageQuantity;
+
+                ret.Add(cs);
+            }
+
+            return ret;
+        }
+
+        public PerformanceMeasures get_perfomances()
+        {
+            PerformanceMeasures ret = new PerformanceMeasures();
+
+            ret.EndingInventoryAverage =(decimal) (tot_end / system.NumberOfDays);
+            ret.ShortageQuantityAverage = (decimal)(tot_shortage / system.NumberOfDays);
+
+            return ret;
+        }
+    }
+}
